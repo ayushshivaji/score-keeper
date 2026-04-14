@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"time"
@@ -14,6 +15,9 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
+
+var ErrStaticLoginDisabled = fmt.Errorf("static login is not configured")
+var ErrInvalidCredentials = fmt.Errorf("invalid credentials")
 
 type AuthService struct {
 	userRepo *repository.UserRepository
@@ -31,6 +35,24 @@ type JWTClaims struct {
 
 func (s *AuthService) UpsertUser(ctx context.Context, googleID, email, name string, avatarURL *string) (*model.User, error) {
 	return s.userRepo.UpsertByGoogleID(ctx, googleID, email, name, avatarURL)
+}
+
+// LoginStatic validates credentials against the statically-configured
+// username/password and returns (or creates) the corresponding user. The
+// synthetic user is persisted so it can own matches and refresh tokens
+// alongside OAuth users.
+func (s *AuthService) LoginStatic(ctx context.Context, username, password string) (*model.User, error) {
+	if s.cfg.StaticLoginUsername == "" || s.cfg.StaticLoginPassword == "" {
+		return nil, ErrStaticLoginDisabled
+	}
+	userMatch := subtle.ConstantTimeCompare([]byte(username), []byte(s.cfg.StaticLoginUsername))
+	passMatch := subtle.ConstantTimeCompare([]byte(password), []byte(s.cfg.StaticLoginPassword))
+	if userMatch != 1 || passMatch != 1 {
+		return nil, ErrInvalidCredentials
+	}
+	syntheticID := "static:" + s.cfg.StaticLoginUsername
+	email := s.cfg.StaticLoginUsername + "@static.local"
+	return s.userRepo.UpsertByGoogleID(ctx, syntheticID, email, s.cfg.StaticLoginUsername, nil)
 }
 
 func (s *AuthService) GenerateAccessToken(userID uuid.UUID) (string, error) {

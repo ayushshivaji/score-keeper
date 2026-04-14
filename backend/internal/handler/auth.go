@@ -101,6 +101,47 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 	c.Redirect(http.StatusTemporaryRedirect, h.cfg.FrontendURL+"/dashboard")
 }
 
+type staticLoginRequest struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+func (h *AuthHandler) StaticLogin(c *gin.Context) {
+	var req staticLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse("BAD_REQUEST", "username and password are required"))
+		return
+	}
+
+	user, err := h.authService.LoginStatic(c.Request.Context(), req.Username, req.Password)
+	if err != nil {
+		switch err {
+		case service.ErrStaticLoginDisabled:
+			c.JSON(http.StatusNotFound, dto.ErrorResponse("NOT_FOUND", "static login is not enabled"))
+		case service.ErrInvalidCredentials:
+			c.JSON(http.StatusUnauthorized, dto.ErrorResponse("UNAUTHORIZED", "invalid credentials"))
+		default:
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse("SERVER_ERROR", "failed to login"))
+		}
+		return
+	}
+
+	accessToken, err := h.authService.GenerateAccessToken(user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse("SERVER_ERROR", "failed to generate access token"))
+		return
+	}
+	refreshToken, err := h.authService.GenerateRefreshToken(c.Request.Context(), user.ID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse("SERVER_ERROR", "failed to generate refresh token"))
+		return
+	}
+
+	c.SetCookie("access_token", accessToken, 900, "/", "", false, true)
+	c.SetCookie("refresh_token", refreshToken, 604800, "/", "", false, true)
+	c.JSON(http.StatusOK, dto.Success(user))
+}
+
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
 	if err != nil {

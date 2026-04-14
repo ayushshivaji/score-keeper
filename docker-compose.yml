@@ -35,10 +35,19 @@ services:
       DATABASE_URL: postgres://scorekeeper:${DB_PASSWORD:-changeme}@db:5432/scorekeeper?sslmode=disable
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      # OAuth callback comes through the frontend origin so Set-Cookie lands on
+      # the same host the browser uses for everything else.
+      GOOGLE_REDIRECT_URL: http://localhost:3000/api/v1/auth/google/callback
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
-      FRONTEND_URL: http://0.0.0.0:3000
-    ports:
-      - "8080:8080"
+      FRONTEND_URL: http://localhost:3000
+      # Optional static login (username + password) available alongside
+      # Google OAuth. Leave both unset to disable.
+      STATIC_LOGIN_USERNAME: ${STATIC_LOGIN_USERNAME:-}
+      STATIC_LOGIN_PASSWORD: ${STATIC_LOGIN_PASSWORD:-}
+    # No `ports:` — the backend is only reachable inside the compose network
+    # via the frontend's same-origin proxy. Uncomment to debug directly:
+    # ports:
+    #   - "8080:8080"
 
   frontend:
     build:
@@ -46,7 +55,9 @@ services:
     depends_on:
       - backend
     environment:
-      NEXT_PUBLIC_API_URL: http://192.168.1.5/api/v1
+      # Read by next.config.ts rewrites() at Next server startup (runtime, not
+      # build time). One built image works across every environment.
+      BACKEND_URL: http://backend:8080
     ports:
       - "3000:3000"
 

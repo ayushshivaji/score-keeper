@@ -18,9 +18,18 @@ func NewUserRepository(db *pgxpool.Pool) *UserRepository {
 	return &UserRepository{db: db}
 }
 
+const userCols = `id, google_id, email, name, avatar_url, matches_played, matches_won, total_points, created_at, updated_at`
+
+func scanUser(row pgx.Row, u *model.User) error {
+	return row.Scan(
+		&u.ID, &u.GoogleID, &u.Email, &u.Name, &u.AvatarURL,
+		&u.MatchesPlayed, &u.MatchesWon, &u.TotalPoints, &u.CreatedAt, &u.UpdatedAt,
+	)
+}
+
 func (r *UserRepository) UpsertByGoogleID(ctx context.Context, googleID, email, name string, avatarURL *string) (*model.User, error) {
 	var user model.User
-	err := r.db.QueryRow(ctx, `
+	err := scanUser(r.db.QueryRow(ctx, `
 		INSERT INTO users (google_id, email, name, avatar_url)
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (google_id) DO UPDATE SET
@@ -28,11 +37,8 @@ func (r *UserRepository) UpsertByGoogleID(ctx context.Context, googleID, email, 
 			name = EXCLUDED.name,
 			avatar_url = EXCLUDED.avatar_url,
 			updated_at = NOW()
-		RETURNING id, google_id, email, name, avatar_url, matches_played, matches_won, created_at, updated_at
-	`, googleID, email, name, avatarURL).Scan(
-		&user.ID, &user.GoogleID, &user.Email, &user.Name, &user.AvatarURL,
-		&user.MatchesPlayed, &user.MatchesWon, &user.CreatedAt, &user.UpdatedAt,
-	)
+		RETURNING `+userCols+`
+	`, googleID, email, name, avatarURL), &user)
 	if err != nil {
 		return nil, err
 	}
@@ -41,13 +47,7 @@ func (r *UserRepository) UpsertByGoogleID(ctx context.Context, googleID, email, 
 
 func (r *UserRepository) GetByID(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	var user model.User
-	err := r.db.QueryRow(ctx, `
-		SELECT id, google_id, email, name, avatar_url, matches_played, matches_won, created_at, updated_at
-		FROM users WHERE id = $1
-	`, id).Scan(
-		&user.ID, &user.GoogleID, &user.Email, &user.Name, &user.AvatarURL,
-		&user.MatchesPlayed, &user.MatchesWon, &user.CreatedAt, &user.UpdatedAt,
-	)
+	err := scanUser(r.db.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE id = $1`, id), &user)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -66,23 +66,16 @@ func (r *UserRepository) List(ctx context.Context, search string, page, perPage 
 
 	if search != "" {
 		pattern := "%" + search + "%"
-		err = r.db.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE name ILIKE $1`, pattern).Scan(&total)
-		if err != nil {
+		if err = r.db.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE name ILIKE $1`, pattern).Scan(&total); err != nil {
 			return nil, 0, err
 		}
-		rows, err = r.db.Query(ctx, `
-			SELECT id, google_id, email, name, avatar_url, matches_played, matches_won, created_at, updated_at
-			FROM users WHERE name ILIKE $1 ORDER BY name LIMIT $2 OFFSET $3
-		`, pattern, perPage, offset)
+		rows, err = r.db.Query(ctx, `SELECT `+userCols+` FROM users WHERE name ILIKE $1 ORDER BY name LIMIT $2 OFFSET $3`,
+			pattern, perPage, offset)
 	} else {
-		err = r.db.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&total)
-		if err != nil {
+		if err = r.db.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&total); err != nil {
 			return nil, 0, err
 		}
-		rows, err = r.db.Query(ctx, `
-			SELECT id, google_id, email, name, avatar_url, matches_played, matches_won, created_at, updated_at
-			FROM users ORDER BY name LIMIT $1 OFFSET $2
-		`, perPage, offset)
+		rows, err = r.db.Query(ctx, `SELECT `+userCols+` FROM users ORDER BY name LIMIT $1 OFFSET $2`, perPage, offset)
 	}
 	if err != nil {
 		return nil, 0, err
@@ -92,8 +85,41 @@ func (r *UserRepository) List(ctx context.Context, search string, page, perPage 
 	var users []model.User
 	for rows.Next() {
 		var u model.User
-		if err := rows.Scan(&u.ID, &u.GoogleID, &u.Email, &u.Name, &u.AvatarURL,
-			&u.MatchesPlayed, &u.MatchesWon, &u.CreatedAt, &u.UpdatedAt); err != nil {
+		if err := scanUser(rows, &u); err != nil {
+			return nil, 0, err
+		}
+		users = append(users, u)
+	}
+	return users, total, nil
+}
+
+func (r *UserRepository) ListLeaderboard(ctx context.Context, page, perPage int) ([]model.User, int, error) {
+	offset := (page - 1) * perPage
+
+	var total int
+	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE matches_played > 0`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := r.db.Query(ctx, `
+		SELECT `+userCols+`
+		FROM users
+		WHERE matches_played > 0
+		ORDER BY matches_won DESC,
+		         total_points DESC,
+		         (matches_won::float / NULLIF(matches_played, 0)) DESC NULLS LAST,
+		         name ASC
+		LIMIT $1 OFFSET $2
+	`, perPage, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var users []model.User
+	for rows.Next() {
+		var u model.User
+		if err := scanUser(rows, &u); err != nil {
 			return nil, 0, err
 		}
 		users = append(users, u)
@@ -131,17 +157,16 @@ func (r *UserRepository) DeleteUserRefreshTokens(ctx context.Context, userID uui
 	return err
 }
 
-func (r *UserRepository) IncrementMatchStats(ctx context.Context, tx pgx.Tx, playerID uuid.UUID, won bool) error {
-	if won {
-		_, err := tx.Exec(ctx, `
-			UPDATE users SET matches_played = matches_played + 1, matches_won = matches_won + 1, updated_at = NOW()
-			WHERE id = $1
-		`, playerID)
-		return err
-	}
+// AdjustMatchStats applies signed deltas to a player's aggregate counters.
+// Use +1 / positive values when recording a match, -1 / negative on deletion.
+func (r *UserRepository) AdjustMatchStats(ctx context.Context, tx pgx.Tx, playerID uuid.UUID, playedDelta, wonDelta, pointsDelta int) error {
 	_, err := tx.Exec(ctx, `
-		UPDATE users SET matches_played = matches_played + 1, updated_at = NOW()
+		UPDATE users
+		SET matches_played = matches_played + $2,
+		    matches_won = matches_won + $3,
+		    total_points = total_points + $4,
+		    updated_at = NOW()
 		WHERE id = $1
-	`, playerID)
+	`, playerID, playedDelta, wonDelta, pointsDelta)
 	return err
 }

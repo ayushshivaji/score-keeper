@@ -48,17 +48,18 @@ func main() {
 
 	// Services
 	authService := service.NewAuthService(userRepo, cfg)
-	userService := service.NewUserService(userRepo)
+	userService := service.NewUserService(userRepo, matchRepo)
 	matchService := service.NewMatchService(matchRepo, userRepo)
 
 	// Handlers
 	authHandler := handler.NewAuthHandler(authService, cfg)
 	userHandler := handler.NewUserHandler(userService)
 	matchHandler := handler.NewMatchHandler(matchService)
+	leaderboardHandler := handler.NewLeaderboardHandler(userService)
 
 	// Router
 	r := gin.Default()
-	router.Setup(r, authHandler, userHandler, matchHandler, authService, cfg.FrontendURL)
+	router.Setup(r, authHandler, userHandler, matchHandler, leaderboardHandler, authService, cfg.FrontendURL)
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Info().Str("addr", addr).Msg("starting server")

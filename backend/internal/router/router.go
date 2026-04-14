@@ -12,6 +12,7 @@ func Setup(
 	authHandler *handler.AuthHandler,
 	userHandler *handler.UserHandler,
 	matchHandler *handler.MatchHandler,
+	leaderboardHandler *handler.LeaderboardHandler,
 	authService *service.AuthService,
 	frontendURL string,
 ) {
@@ -24,6 +25,7 @@ func Setup(
 	auth := v1.Group("/auth")
 	auth.GET("/google", authHandler.GoogleLogin)
 	auth.GET("/google/callback", authHandler.GoogleCallback)
+	auth.POST("/login", authHandler.StaticLogin)
 	auth.POST("/refresh", authHandler.Refresh)
 
 	// Protected routes
@@ -35,6 +37,9 @@ func Setup(
 
 	protected.GET("/users", userHandler.List)
 	protected.GET("/users/:id", userHandler.Get)
+	protected.GET("/users/:id/head-to-head/:opponentId", userHandler.HeadToHead)
+
+	protected.GET("/leaderboard", leaderboardHandler.List)
 
 	protected.POST("/matches", matchHandler.Create)
 	protected.GET("/matches", matchHandler.List)

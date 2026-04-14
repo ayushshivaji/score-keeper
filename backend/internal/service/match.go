@@ -26,25 +26,12 @@ func (s *MatchService) CreateMatch(ctx context.Context, req *dto.CreateMatchRequ
 		return nil, fmt.Errorf("player 1 and player 2 must be different")
 	}
 
-	if err := validator.ValidateMatchSets(req); err != nil {
+	if err := validator.ValidateMatchScore(req.Player1Score, req.Player2Score); err != nil {
 		return nil, err
 	}
 
-	// Determine winner
-	player1Wins := 0
-	player2Wins := 0
-	for _, set := range req.Sets {
-		if set.Player1Score > set.Player2Score {
-			player1Wins++
-		} else {
-			player2Wins++
-		}
-	}
-
-	var winnerID uuid.UUID
-	if player1Wins > player2Wins {
-		winnerID = req.Player1ID
-	} else {
+	winnerID := req.Player1ID
+	if req.Player2Score > req.Player1Score {
 		winnerID = req.Player2ID
 	}
 
@@ -55,36 +42,29 @@ func (s *MatchService) CreateMatch(ctx context.Context, req *dto.CreateMatchRequ
 	defer tx.Rollback(ctx)
 
 	match := &model.Match{
-		Player1ID:      req.Player1ID,
-		Player2ID:      req.Player2ID,
-		WinnerID:       winnerID,
-		MatchFormat:    req.MatchFormat,
-		Player1SetsWon: player1Wins,
-		Player2SetsWon: player2Wins,
-		PlayedAt:       req.PlayedAt,
-		CreatedBy:      createdBy,
+		Player1ID:    req.Player1ID,
+		Player2ID:    req.Player2ID,
+		WinnerID:     winnerID,
+		Player1Score: req.Player1Score,
+		Player2Score: req.Player2Score,
+		PlayedAt:     req.PlayedAt,
+		CreatedBy:    createdBy,
 	}
 
 	if err := s.matchRepo.CreateMatch(ctx, tx, match); err != nil {
 		return nil, err
 	}
 
-	sets := make([]model.MatchSet, len(req.Sets))
-	for i, set := range req.Sets {
-		sets[i] = model.MatchSet{
-			Player1Score: set.Player1Score,
-			Player2Score: set.Player2Score,
-		}
+	p1Won, p2Won := 0, 0
+	if winnerID == req.Player1ID {
+		p1Won = 1
+	} else {
+		p2Won = 1
 	}
-	if err := s.matchRepo.CreateMatchSets(ctx, tx, match.ID, sets); err != nil {
+	if err := s.userRepo.AdjustMatchStats(ctx, tx, req.Player1ID, 1, p1Won, req.Player1Score); err != nil {
 		return nil, err
 	}
-
-	// Update player stats
-	if err := s.userRepo.IncrementMatchStats(ctx, tx, req.Player1ID, winnerID == req.Player1ID); err != nil {
-		return nil, err
-	}
-	if err := s.userRepo.IncrementMatchStats(ctx, tx, req.Player2ID, winnerID == req.Player2ID); err != nil {
+	if err := s.userRepo.AdjustMatchStats(ctx, tx, req.Player2ID, 1, p2Won, req.Player2Score); err != nil {
 		return nil, err
 	}
 
@@ -133,11 +113,16 @@ func (s *MatchService) DeleteMatch(ctx context.Context, matchID, userID uuid.UUI
 	}
 	defer tx.Rollback(ctx)
 
-	// Decrement stats
-	if err := s.userRepo.IncrementMatchStats(ctx, tx, match.Player1ID, false); err != nil {
+	p1Won, p2Won := 0, 0
+	if match.WinnerID == match.Player1ID {
+		p1Won = 1
+	} else {
+		p2Won = 1
+	}
+	if err := s.userRepo.AdjustMatchStats(ctx, tx, match.Player1ID, -1, -p1Won, -match.Player1Score); err != nil {
 		return err
 	}
-	if err := s.userRepo.IncrementMatchStats(ctx, tx, match.Player2ID, false); err != nil {
+	if err := s.userRepo.AdjustMatchStats(ctx, tx, match.Player2ID, -1, -p2Won, -match.Player2Score); err != nil {
 		return err
 	}
 

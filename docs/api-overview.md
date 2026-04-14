@@ -56,6 +56,15 @@ All responses follow this format:
 | `VALIDATION_ERROR` | 400 | Request body fails validation rules |
 | `SERVER_ERROR` | 500 | Unexpected server error |
 
+## Endpoint Groups
+
+| Group | Doc |
+|-------|-----|
+| Auth | [api-auth.md](./api-auth.md) |
+| Users | [api-users.md](./api-users.md) |
+| Matches | [api-matches.md](./api-matches.md) |
+| Leaderboard | [api-leaderboard.md](./api-leaderboard.md) |
+
 ## Pagination
 
 List endpoints accept these query parameters:

@@ -39,11 +39,36 @@ func (h *UserHandler) Get(c *gin.Context) {
 		return
 	}
 
-	user, err := h.userService.GetUser(c.Request.Context(), id)
-	if err != nil || user == nil {
+	profile, err := h.userService.GetUserProfile(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse("SERVER_ERROR", "failed to load profile"))
+		return
+	}
+	if profile == nil {
 		c.JSON(http.StatusNotFound, dto.ErrorResponse("NOT_FOUND", "user not found"))
 		return
 	}
 
-	c.JSON(http.StatusOK, dto.Success(user))
+	c.JSON(http.StatusOK, dto.Success(profile))
+}
+
+func (h *UserHandler) HeadToHead(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse("BAD_REQUEST", "invalid user id"))
+		return
+	}
+	opponentID, err := uuid.Parse(c.Param("opponentId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse("BAD_REQUEST", "invalid opponent id"))
+		return
+	}
+
+	h2h, err := h.userService.GetHeadToHead(c.Request.Context(), id, opponentID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse("BAD_REQUEST", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.Success(h2h))
 }
