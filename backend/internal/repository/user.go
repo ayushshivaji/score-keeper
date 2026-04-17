@@ -27,6 +27,22 @@ func scanUser(row pgx.Row, u *model.User) error {
 	)
 }
 
+// CreatePlayer inserts a manually-added player (no Google OAuth). The caller
+// supplies a synthetic google_id (e.g. "player:<uuid>") and a synthetic email
+// to satisfy the UNIQUE NOT NULL constraints on those columns.
+func (r *UserRepository) CreatePlayer(ctx context.Context, googleID, email, name string) (*model.User, error) {
+	var user model.User
+	err := scanUser(r.db.QueryRow(ctx, `
+		INSERT INTO users (google_id, email, name)
+		VALUES ($1, $2, $3)
+		RETURNING `+userCols+`
+	`, googleID, email, name), &user)
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (r *UserRepository) UpsertByGoogleID(ctx context.Context, googleID, email, name string, avatarURL *string) (*model.User, error) {
 	var user model.User
 	err := scanUser(r.db.QueryRow(ctx, `

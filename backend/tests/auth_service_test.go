@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -147,6 +148,72 @@ func TestGenerateAccessToken_HasIssuedAt(t *testing.T) {
 	}
 	if time.Since(claims.IssuedAt.Time) > 5*time.Second {
 		t.Error("IssuedAt too far in the past")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Static Login
+// ---------------------------------------------------------------------------
+
+func TestLoginStatic_DisabledWhenUsernameEmpty(t *testing.T) {
+	cfg := newTestConfig()
+	cfg.StaticLoginUsername = ""
+	cfg.StaticLoginPassword = "pw"
+	svc := service.NewAuthService(nil, cfg)
+
+	_, err := svc.LoginStatic(context.Background(), "admin", "pw")
+	if err != service.ErrStaticLoginDisabled {
+		t.Fatalf("expected ErrStaticLoginDisabled, got %v", err)
+	}
+}
+
+func TestLoginStatic_DisabledWhenPasswordEmpty(t *testing.T) {
+	cfg := newTestConfig()
+	cfg.StaticLoginUsername = "admin"
+	cfg.StaticLoginPassword = ""
+	svc := service.NewAuthService(nil, cfg)
+
+	_, err := svc.LoginStatic(context.Background(), "admin", "")
+	if err != service.ErrStaticLoginDisabled {
+		t.Fatalf("expected ErrStaticLoginDisabled, got %v", err)
+	}
+}
+
+func TestLoginStatic_WrongUsername(t *testing.T) {
+	cfg := newTestConfig()
+	cfg.StaticLoginUsername = "admin"
+	cfg.StaticLoginPassword = "pw"
+	svc := service.NewAuthService(nil, cfg)
+
+	_, err := svc.LoginStatic(context.Background(), "root", "pw")
+	if err != service.ErrInvalidCredentials {
+		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
+	}
+}
+
+func TestLoginStatic_WrongPassword(t *testing.T) {
+	cfg := newTestConfig()
+	cfg.StaticLoginUsername = "admin"
+	cfg.StaticLoginPassword = "pw"
+	svc := service.NewAuthService(nil, cfg)
+
+	_, err := svc.LoginStatic(context.Background(), "admin", "nope")
+	if err != service.ErrInvalidCredentials {
+		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
+	}
+}
+
+func TestLoginStatic_LengthMismatchStillRejected(t *testing.T) {
+	// ConstantTimeCompare returns 0 for differing lengths — make sure that
+	// path still surfaces as an invalid-credentials error rather than panicking.
+	cfg := newTestConfig()
+	cfg.StaticLoginUsername = "admin"
+	cfg.StaticLoginPassword = "longpassword"
+	svc := service.NewAuthService(nil, cfg)
+
+	_, err := svc.LoginStatic(context.Background(), "admin", "short")
+	if err != service.ErrInvalidCredentials {
+		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
 	}
 }
 

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ayush-sr/score-keeper/backend/internal/dto"
 	"github.com/ayush-sr/score-keeper/backend/internal/model"
@@ -21,6 +22,22 @@ func NewUserService(userRepo *repository.UserRepository, matchRepo *repository.M
 
 func (s *UserService) GetUser(ctx context.Context, id uuid.UUID) (*model.User, error) {
 	return s.userRepo.GetByID(ctx, id)
+}
+
+// CreatePlayer adds a player who does not sign in via Google. Used when the
+// app is operated via the static login and players are managed by the admin.
+func (s *UserService) CreatePlayer(ctx context.Context, name string) (*model.User, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+	if len(name) > 255 {
+		return nil, fmt.Errorf("name is too long")
+	}
+	playerID := uuid.NewString()
+	syntheticGoogleID := "player:" + playerID
+	syntheticEmail := "player-" + playerID + "@local"
+	return s.userRepo.CreatePlayer(ctx, syntheticGoogleID, syntheticEmail, name)
 }
 
 func (s *UserService) ListUsers(ctx context.Context, search string, page, perPage int) ([]model.User, int, error) {

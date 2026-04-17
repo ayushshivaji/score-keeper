@@ -6,6 +6,15 @@ import (
 	"github.com/google/uuid"
 )
 
+type CreatePlayerRequest struct {
+	Name string `json:"name" binding:"required"`
+}
+
+type CreateQuickPairRequest struct {
+	Player1ID uuid.UUID `json:"player1_id" binding:"required"`
+	Player2ID uuid.UUID `json:"player2_id" binding:"required"`
+}
+
 type CreateMatchRequest struct {
 	Player1ID    uuid.UUID `json:"player1_id" binding:"required"`
 	Player2ID    uuid.UUID `json:"player2_id" binding:"required"`

@@ -110,3 +110,34 @@ func TestLoad_CustomFrontendURL(t *testing.T) {
 		t.Errorf("expected https://myapp.com, got %s", cfg.FrontendURL)
 	}
 }
+
+func TestLoad_StaticLoginUnsetByDefault(t *testing.T) {
+	setEnvVars(t, validEnvVars())
+	os.Unsetenv("STATIC_LOGIN_USERNAME")
+	os.Unsetenv("STATIC_LOGIN_PASSWORD")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("config.Load() failed: %v", err)
+	}
+	if cfg.StaticLoginUsername != "" || cfg.StaticLoginPassword != "" {
+		t.Errorf("expected static login to be empty by default, got %q/%q",
+			cfg.StaticLoginUsername, cfg.StaticLoginPassword)
+	}
+}
+
+func TestLoad_StaticLoginFromEnv(t *testing.T) {
+	vars := validEnvVars()
+	vars["STATIC_LOGIN_USERNAME"] = "admin"
+	vars["STATIC_LOGIN_PASSWORD"] = "s3cret"
+	setEnvVars(t, vars)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("config.Load() failed: %v", err)
+	}
+	if cfg.StaticLoginUsername != "admin" {
+		t.Errorf("expected admin, got %s", cfg.StaticLoginUsername)
+	}
+	if cfg.StaticLoginPassword != "s3cret" {
+		t.Errorf("expected s3cret, got %s", cfg.StaticLoginPassword)
+	}
+}

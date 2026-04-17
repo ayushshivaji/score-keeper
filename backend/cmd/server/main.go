@@ -45,21 +45,24 @@ func main() {
 	// Repositories
 	userRepo := repository.NewUserRepository(pool)
 	matchRepo := repository.NewMatchRepository(pool)
+	quickPairRepo := repository.NewQuickPairRepository(pool)
 
 	// Services
 	authService := service.NewAuthService(userRepo, cfg)
 	userService := service.NewUserService(userRepo, matchRepo)
 	matchService := service.NewMatchService(matchRepo, userRepo)
+	quickPairService := service.NewQuickPairService(quickPairRepo, userRepo)
 
 	// Handlers
 	authHandler := handler.NewAuthHandler(authService, cfg)
 	userHandler := handler.NewUserHandler(userService)
 	matchHandler := handler.NewMatchHandler(matchService)
 	leaderboardHandler := handler.NewLeaderboardHandler(userService)
+	quickPairHandler := handler.NewQuickPairHandler(quickPairService)
 
 	// Router
 	r := gin.Default()
-	router.Setup(r, authHandler, userHandler, matchHandler, leaderboardHandler, authService, cfg.FrontendURL)
+	router.Setup(r, authHandler, userHandler, matchHandler, leaderboardHandler, quickPairHandler, authService, cfg.FrontendURL)
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Info().Str("addr", addr).Msg("starting server")

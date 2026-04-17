@@ -18,6 +18,22 @@ func NewUserHandler(userService *service.UserService) *UserHandler {
 	return &UserHandler{userService: userService}
 }
 
+func (h *UserHandler) Create(c *gin.Context) {
+	var req dto.CreatePlayerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse("BAD_REQUEST", "name is required"))
+		return
+	}
+
+	user, err := h.userService.CreatePlayer(c.Request.Context(), req.Name)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse("BAD_REQUEST", err.Error()))
+		return
+	}
+
+	c.JSON(http.StatusCreated, dto.Success(user))
+}
+
 func (h *UserHandler) List(c *gin.Context) {
 	search := c.Query("search")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))

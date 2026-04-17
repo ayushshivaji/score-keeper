@@ -13,6 +13,7 @@ func Setup(
 	userHandler *handler.UserHandler,
 	matchHandler *handler.MatchHandler,
 	leaderboardHandler *handler.LeaderboardHandler,
+	quickPairHandler *handler.QuickPairHandler,
 	authService *service.AuthService,
 	frontendURL string,
 ) {
@@ -35,6 +36,7 @@ func Setup(
 	protected.POST("/auth/logout", authHandler.Logout)
 	protected.GET("/auth/me", authHandler.Me)
 
+	protected.POST("/users", userHandler.Create)
 	protected.GET("/users", userHandler.List)
 	protected.GET("/users/:id", userHandler.Get)
 	protected.GET("/users/:id/head-to-head/:opponentId", userHandler.HeadToHead)
@@ -45,4 +47,8 @@ func Setup(
 	protected.GET("/matches", matchHandler.List)
 	protected.GET("/matches/:id", matchHandler.Get)
 	protected.DELETE("/matches/:id", matchHandler.Delete)
+
+	protected.GET("/quick-pairs", quickPairHandler.List)
+	protected.POST("/quick-pairs", quickPairHandler.Create)
+	protected.DELETE("/quick-pairs/:id", quickPairHandler.Delete)
 }
