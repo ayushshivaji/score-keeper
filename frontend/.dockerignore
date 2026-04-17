@@ -1,0 +1,12 @@
+node_modules
+.next
+npm-debug.log
+.env*.local
+.git
+.gitignore
+Dockerfile
+.dockerignore
+# The committed lockfile is generated on macOS and pins darwin-arm64 as
+# the resolved optional SWC binary. We install deps inside the image
+# from package.json alone so npm picks the correct linux binary.
+package-lock.json
